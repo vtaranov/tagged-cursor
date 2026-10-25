@@ -1,0 +1,37 @@
+name: Флаг не там или не работает
+description: Неверная позиция флага, не та раскладка, флаг не появляется
+body:
+  - type: input
+    id: app
+    attributes:
+      label: Приложение и поле
+      placeholder: "Chrome, поле поиска на github.com"
+    validations:
+      required: true
+  - type: input
+    id: diag
+    attributes:
+      label: Строка диагностики из меню
+      description: Поставьте курсор в проблемное поле и откройте меню Tagged Cursor — первая строка.
+      placeholder: "Google Chrome · AXTextField · marker"
+  - type: textarea
+    id: what
+    attributes:
+      label: Что происходит и что ожидалось
+      description: Скриншот очень помогает.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Версия Tagged Cursor и macOS
+      placeholder: "0.4.0, macOS 15.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Как работаете
+      options:
+        - С клавиатуры этого мака
+        - Через Screen Sharing с другого мака

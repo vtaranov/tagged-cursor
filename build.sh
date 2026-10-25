@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 
 APP=build/TaggedCursor.app
 mkdir -p "$APP/Contents/MacOS"
-swiftc -O -swift-version 5 -target arm64-apple-macos13 Sources/*.swift Sources/Core/*.swift -o "$APP/Contents/MacOS/TaggedCursor"
+swiftc -O -swift-version 5 -target "$(uname -m)-apple-macos13" Sources/*.swift Sources/Core/*.swift -o "$APP/Contents/MacOS/TaggedCursor"
 cp Info.plist "$APP/Contents/Info.plist"
 # Постоянная подпись сохраняет разрешение Универсального доступа между сборками.
 IDENTITY="Tagged Cursor Dev"

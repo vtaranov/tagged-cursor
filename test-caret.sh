@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 APP=build/CaretHarness.app
 mkdir -p "$APP/Contents/MacOS"
-swiftc -swift-version 5 -target arm64-apple-macos13 \
+swiftc -swift-version 5 -target "$(uname -m)-apple-macos13" \
     Sources/Core/*.swift Sources/Config.swift Sources/Accessibility.swift Sources/Caret.swift \
     Harness/*.swift -o "$APP/Contents/MacOS/CaretHarness"
 cp Harness/Info.plist "$APP/Contents/Info.plist"
