@@ -95,8 +95,10 @@ private func caretByRange(_ el: AXUIElement, _ rangeRef: CFTypeRef?, axFrame: CG
         return Geometry.looksLikeFieldFrame(rect, axFrame: axFrame) ? nil : rect
     }
 
-    if let r = validCaret(bounds(loc, 0)) { return Geometry.collapsed(r) }
+    // Рамку символа запрашиваем раньше пустого диапазона: на length 0 AppKit
+    // отдаёт прямоугольник на высоту строки выше настоящего курсора.
     if let r = validCaret(bounds(loc, 1)) { return CGRect(x: r.minX, y: r.minY, width: 0, height: r.height) }
     if loc > 0, let r = validCaret(bounds(loc - 1, 1)) { return CGRect(x: r.maxX, y: r.minY, width: 0, height: r.height) }
+    if let r = validCaret(bounds(loc, 0)) { return Geometry.collapsed(r) }
     return nil
 }
