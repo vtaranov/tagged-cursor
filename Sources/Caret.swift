@@ -1,18 +1,6 @@
 import AppKit
 import ApplicationServices
 
-enum AnchorSource: String { case range, marker, metrics, field, mouse }
-
-struct Anchor {
-    var rect: CGRect // Cocoa coordinates
-    var source: AnchorSource
-}
-
-struct Probe {
-    var role: String
-    var anchor: Anchor?
-}
-
 private let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
 private let systemWide = AXUIElementCreateSystemWide()
 
@@ -46,7 +34,7 @@ func probeCaret(pid: pid_t, bundleID: String?) -> Probe {
 
     if let r = caretByRange(el, rangeRef, axFrame: axFrame) { return Probe(role: role, anchor: Anchor(rect: r, source: .range)) }
     if let markerRef, let r = validCaret(axValue(axParamAttr(el, "AXBoundsForTextMarkerRange", markerRef), .cgRect, CGRect.zero)) {
-        return Probe(role: role, anchor: Anchor(rect: collapsed(r), source: .marker))
+        return Probe(role: role, anchor: Anchor(rect: Geometry.collapsed(r), source: .marker))
     }
     guard let axFrame, let frame = visibleFrame(axFrame) else { return Probe(role: role, anchor: nil) }
     if frame.height <= Config.smallFieldMaxHeight {
@@ -70,11 +58,6 @@ private func isTextInput(_ el: AXUIElement, role: String, hasSelection: Bool) ->
     var settable: DarwinBoolean = false
     let valueSettable = AXUIElementIsAttributeSettable(el, kAXValueAttribute as CFString, &settable) == .success && settable.boolValue
     return valueSettable || axAttr(el, "AXEditableAncestor") != nil
-}
-
-/// Пустое поле с плейсхолдером в Chromium отдаёт вместо курсора всю строку.
-private func collapsed(_ r: CGRect) -> CGRect {
-    r.width > 3 ? CGRect(x: r.minX, y: r.minY, width: 0, height: r.height) : r
 }
 
 /// Для полей без координат символов (омнибокс Chrome): ширина текста до курсора системным шрифтом.
@@ -105,16 +88,14 @@ private func caretByRange(_ el: AXUIElement, _ rangeRef: CFTypeRef?, axFrame: CG
     guard let range = axValue(rangeRef, .cfRange, CFRange()) else { return nil }
     let loc = range.location + range.length
 
-    // Excel на любой диапазон отдаёт рамку всего поля — это не позиция курсора.
     func bounds(_ location: Int, _ length: Int) -> CGRect? {
         var r = CFRange(location: location, length: length)
         guard let param = AXValueCreate(.cfRange, &r),
               let rect = axValue(axParamAttr(el, kAXBoundsForRangeParameterizedAttribute, param), .cgRect, CGRect.zero) else { return nil }
-        if let axFrame, rect.width > 20, abs(rect.minX - axFrame.minX) < 2, abs(rect.width - axFrame.width) < 2 { return nil }
-        return rect
+        return Geometry.looksLikeFieldFrame(rect, axFrame: axFrame) ? nil : rect
     }
 
-    if let r = validCaret(bounds(loc, 0)) { return collapsed(r) }
+    if let r = validCaret(bounds(loc, 0)) { return Geometry.collapsed(r) }
     if let r = validCaret(bounds(loc, 1)) { return CGRect(x: r.minX, y: r.minY, width: 0, height: r.height) }
     if loc > 0, let r = validCaret(bounds(loc - 1, 1)) { return CGRect(x: r.maxX, y: r.minY, width: 0, height: r.height) }
     return nil

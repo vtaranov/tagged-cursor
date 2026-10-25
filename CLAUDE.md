@@ -9,11 +9,13 @@
 ```bash
 ./build.sh      # сборка в build/TaggedCursor.app (swiftc, без Xcode)
 ./install.sh    # сборка + установка в /Applications + перезапуск
+./test.sh       # юнит-тесты логики (Sources/Core)
 python3 scripts/backlog.py            # очередь требований
 /usr/bin/log show --last 10m --predicate 'subsystem == "local.tagged-cursor"' --style compact
 ```
 
 - Только Command Line Tools, Xcode нет. Swift 6 в режиме `-swift-version 5`.
+- Тесты: Swift Testing через SwiftPM (`Package.swift` — цель только для `Sources/Core`, приложение по-прежнему собирается `swiftc`). Без Xcode нужны `platforms: [.macOS(.v13)]` и явные пути к фреймворкам — всё в `test.sh`. `#expect` не умеет вызывать mutating-методы: результат присваивать в `let`.
 - Подпись: самоподписанный сертификат «Tagged Cursor Dev» в связке «Вход». Благодаря ему разрешение Универсального доступа переживает пересборку. Без сертификата `build.sh` откатывается на ad-hoc — тогда после каждой сборки разрешение надо выдавать заново.
 - Установленная копия — `/Applications/TaggedCursor.app`, в автозапуске через `SMAppService`. Не запускать параллельно копию из `build/`.
 - `log` в zsh — встроенная команда, использовать `/usr/bin/log`. Писать диагностику уровнем `notice`: `info` не сохраняется на диск.
@@ -24,11 +26,22 @@ python3 scripts/backlog.py            # очередь требований
 |---|---|
 | `main.swift` | точка входа, `.accessory`-приложение |
 | `Config.swift` | константы, `Settings` (UserDefaults), логгер |
-| `Layout.swift` | раскладка через TIS, письменность символов, распознавание удалённых событий |
-| `Accessibility.swift` | обёртки над AX API, перевод координат AX → Cocoa |
+| `Layout.swift` | `TIS` — раскладки от системы; распознавание удалённых событий |
+| `Accessibility.swift` | обёртки над AX API, экраны для `Geometry` |
 | `Caret.swift` | поиск позиции курсора (`probeCaret`) |
-| `FlagPanel.swift` | окно флага и его позиционирование |
-| `Controller.swift` | события, состояние показа/скрытия, меню в меню-баре |
+| `FlagPanel.swift` | окно флага |
+| `Controller.swift` | события, таймер, меню в меню-баре |
+
+Чистая логика — в `Sources/Core/` (цель тестов, без AX/TIS/NSEvent; всё системное передаётся параметрами):
+
+| Файл | Ответственность |
+|---|---|
+| `Script.swift` | письменность символов, `LayoutInfo` (флаг и письменность по id/языку) |
+| `LayoutState.swift` | какую раскладку показывать: локальная + удалённая коррекция |
+| `DisplayState.swift` | когда флаг виден: скрытие при наборе, пауза, клавиши навигации |
+| `Geometry.swift` | `Anchor`/`Probe`, AX → Cocoa, отбраковка прямоугольников, положение флага |
+
+**Новую логику писать в `Core` с тестом.** Системные вызовы — тонким слоем снаружи.
 
 **Поиск курсора** (`probeCaret`), по порядку: `AXBoundsForRange` (`range`) → `AXBoundsForTextMarkerRange` (`marker`, WebKit/Chromium) → ширина текста до курсора системным шрифтом (`metrics`, однострочные поля) → слева от поля (`field`) → у указателя мыши (`mouse`, большие поля). Источник виден в меню приложения и в логе.
 

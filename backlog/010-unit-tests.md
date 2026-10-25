@@ -1,12 +1,12 @@
 ---
 id: 010
 title: Юнит-тесты логики с отделением её от системных вызовов
-status: new
+status: done
 priority: high
 group: tooling
 size: M
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-10-25
 ---
 
 ## Запрос
@@ -34,5 +34,15 @@ updated: 2026-10-22
 - Риск: рефакторинг затрагивает `Controller` целиком — после него обязательна полная ручная проверка по `docs/test-matrix.md`.
 
 ## План
+1. Вынести чистую логику в `Sources/Core/`: письменность и флаги раскладок, состояние раскладки, политика показа, геометрия. ✔
+2. `Package.swift` (цель `TaggedCursorCore` на `Sources/Core`) + `test.sh` с путями к фреймворкам Command Line Tools. ✔
+3. `Controller` — тонкий слой над этими типами; `build.sh` собирает `Sources/*.swift Sources/Core/*.swift`. ✔
+4. Тесты на все пункты «Запроса». ✔
+5. Проверка пользователем на регрессии (удалённый режим, Chrome, VS Code, Excel). ✔
 
 ## Итог
+Сделано в v0.3.0. Логика вынесена в `Sources/Core/` (`Script.swift`, `LayoutState.swift`, `DisplayState.swift`, `Geometry.swift`), `Controller` только принимает события и передаёт их туда. 21 тест в 4 наборах, запуск `./test.sh`. Поведение не менялось, пользователь подтвердил отсутствие регрессий.
+
+Детали окружения: Swift Testing работает без Xcode при `platforms: [.macOS(.v13)]` и явных путях к фреймворкам (см. `test.sh`); `#expect` не умеет вызывать mutating-методы — результат присваивать в `let`.
+
+Остаётся: интеграционные тесты `probeCaret` — #011.

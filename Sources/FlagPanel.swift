@@ -30,17 +30,9 @@ final class FlagPanel: NSPanel {
 
     func show(text: String, anchor: Anchor) {
         if label.stringValue != text { configure(text) }
-        let size = frame.size
-        var origin: CGPoint
-        if anchor.source == .field {
-            origin = CGPoint(x: anchor.rect.minX - size.width - Config.gap, y: anchor.rect.midY - size.height / 2)
-        } else {
-            origin = CGPoint(x: anchor.rect.maxX - size.width / 2, y: anchor.rect.maxY + Config.gap)
-            let screen = NSScreen.screens.first { $0.frame.contains(anchor.rect.origin) }?.visibleFrame
-            if let screen, origin.y + size.height > screen.maxY {
-                origin.y = anchor.rect.minY - size.height - Config.gap
-            }
-        }
+        let screen = NSScreen.screens.first { $0.frame.contains(anchor.rect.origin) }?.visibleFrame
+        let origin = Geometry.flagOrigin(anchor: anchor, flagSize: frame.size,
+                                         gap: Config.gap, screenMaxY: screen?.maxY)
         if frame.origin != origin { setFrameOrigin(origin) }
         if !isVisible { orderFrontRegardless() }
     }

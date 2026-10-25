@@ -22,16 +22,13 @@ func axElement(_ ref: CFTypeRef?) -> AXUIElement? {
     return (ref as! AXUIElement)
 }
 
-/// AX отдаёт координаты от левого верхнего угла основного экрана, Cocoa — от левого нижнего.
+private var screenFrames: [CGRect] { NSScreen.screens.map(\.frame) }
+private var mainScreenHeight: CGFloat { NSScreen.screens.first?.frame.height ?? 0 }
+
 func cocoaRect(fromAX r: CGRect) -> CGRect {
-    let h = NSScreen.screens.first?.frame.height ?? 0
-    return CGRect(x: r.minX, y: h - r.maxY, width: r.width, height: r.height)
+    Geometry.cocoaRect(fromAX: r, mainScreenHeight: mainScreenHeight)
 }
 
 func validCaret(_ axRect: CGRect?) -> CGRect? {
-    guard let axRect, axRect.height >= 3, axRect.height <= 400, axRect.width <= 2000,
-          !(axRect.minX == 0 && axRect.minY == 0) else { return nil }
-    let r = cocoaRect(fromAX: axRect)
-    let probe = r.insetBy(dx: -1, dy: -1)
-    return NSScreen.screens.contains { $0.frame.intersects(probe) } ? r : nil
+    Geometry.validCaret(axRect, mainScreenHeight: mainScreenHeight, screens: screenFrames)
 }

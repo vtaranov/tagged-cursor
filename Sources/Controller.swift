@@ -11,7 +11,6 @@ private let axCallback: AXObserverCallback = { _, _, _, refcon in
 
 @MainActor
 final class Controller: NSObject {
-    private static let navigationKeys: Set<UInt16> = [53, 115, 116, 119, 121, 123, 124, 125, 126]
     private static let chromiumBrowsers: Set<String> = [
         "com.google.Chrome", "com.google.Chrome.canary", "org.chromium.Chromium", "com.brave.Browser",
         "com.microsoft.edgemac", "company.thebrowser.Browser", "com.vivaldi.Vivaldi",
@@ -26,13 +25,10 @@ final class Controller: NSObject {
     private var axEnabledPIDs = Set<pid_t>()
     private let pauseItem = NSMenuItem(title: "", action: #selector(editPause), keyEquivalent: ",")
     private let loginItem = NSMenuItem(title: "Запускать при входе в систему", action: #selector(toggleLoginItem), keyEquivalent: "")
-    private var layoutLabel = Layout.current()?.label ?? "?"
-    private var localLabel = Layout.current()?.label ?? "?"
-    /// Раскладка управляющего компьютера при удалённом доступе, если она отличается от локальной.
-    private var remoteLabel: String?
+    private var layout = LayoutState()
+    private var display = DisplayState()
+    private var shownLabel = ""
     private var lastRemoteCapsLock = Date.distantPast
-    private var suppressed = false
-    private var lastKeyDown = Date.distantPast
     private var lastDiag = ""
     private var tokens: [Any] = []
 
@@ -151,6 +147,8 @@ final class Controller: NSObject {
             name: NSNotification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String),
             object: nil, suspensionBehavior: .deliverImmediately)
 
+        refreshLayout()
+        layout.enabled = TIS.enabled()
         if let app = NSWorkspace.shared.frontmostApplication { appActivated(app) }
         Timer.scheduledTimer(withTimeInterval: Config.trackInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
@@ -196,16 +194,18 @@ final class Controller: NSObject {
     }
 
     private func keyDown(_ event: NSEvent) {
-        if !event.modifierFlags.intersection([.command, .control]).isEmpty { return }
-        if Self.navigationKeys.contains(event.keyCode) { return }
-        inferLayout(from: event)
-        lastKeyDown = Date()
-        suppressed = true
+        let modified = !event.modifierFlags.intersection([.command, .control]).isEmpty
+        guard DisplayState.isTypingKey(code: event.keyCode, hasCommandOrControl: modified) else { return }
+        // Screen Sharing присылает готовые символы раскладки управляющего компьютера,
+        // поэтому реальную раскладку видно по набранной букве.
+        layout.typed(script(of: event.characters ?? ""))
+        reportLayout()
+        display.keyDown(at: Date())
         panel.hide()
     }
 
     func contextChanged() {
-        suppressed = false
+        display.contextChanged()
         update()
     }
 
@@ -214,32 +214,17 @@ final class Controller: NSObject {
     }
 
     private func refreshLayout() {
-        let local = Layout.current()?.label ?? "?"
-        if local != localLabel {
-            localLabel = local
-            remoteLabel = nil
-        }
-        setLayout(remoteLabel ?? localLabel, show: true)
+        let before = layout.local
+        layout.setLocal(TIS.current())
+        // Список раскладок перечитываем редко: опрос TIS идёт каждый кадр.
+        if layout.local != before { layout.enabled = TIS.enabled() }
+        reportLayout()
     }
 
-    private func setLayout(_ label: String, show: Bool) {
-        guard label != layoutLabel else { return }
-        layoutLabel = label
-        log.notice("layout \(label, privacy: .public) remote=\(self.remoteLabel ?? "-", privacy: .public)")
-        if show { contextChanged() }
-    }
-
-    /// Screen Sharing присылает готовые символы раскладки управляющего компьютера,
-    /// поэтому реальную раскладку видно по набранной букве.
-    private func inferLayout(from event: NSEvent) {
-        let typed = script(of: event.characters ?? "")
-        guard typed != .other else { return }
-        if Layout.current()?.script == typed {
-            remoteLabel = nil
-        } else if let match = Layout.enabled().first(where: { $0.script == typed }) {
-            remoteLabel = match.label
-        }
-        setLayout(remoteLabel ?? localLabel, show: false)
+    private func reportLayout() {
+        guard layout.label != shownLabel else { return }
+        shownLabel = layout.label
+        log.notice("layout \(self.layout.label, privacy: .public) remote=\(self.layout.remote ?? "-", privacy: .public)")
     }
 
     /// Caps Lock с управляющего компьютера переключает раскладку там, а не здесь.
@@ -250,21 +235,15 @@ final class Controller: NSObject {
         guard now.timeIntervalSince(lastRemoteCapsLock) > 0.15 else { return }
         lastRemoteCapsLock = now
 
-        let layouts = Layout.enabled().map(\.label)
-        guard layouts.count > 1 else { return }
-        let index = layouts.firstIndex(of: layoutLabel) ?? -1
-        let next = layouts[(index + 1) % layouts.count]
-        remoteLabel = next == localLabel ? nil : next
-        setLayout(next, show: true)
+        layout.enabled = TIS.enabled()
+        layout.cycleRemote()
+        reportLayout()
+        contextChanged()
     }
 
     private func tick() {
         refreshLayout()
-        if suppressed {
-            let pause = TimeInterval(Settings.reshowAfterIdleMs) / 1000
-            guard pause > 0, Date().timeIntervalSince(lastKeyDown) >= pause else { return }
-            suppressed = false
-        }
+        guard display.shouldShow(now: Date(), pauseMs: Settings.reshowAfterIdleMs) else { return }
         update()
     }
 
@@ -276,7 +255,7 @@ final class Controller: NSObject {
         let probe = probeCaret(pid: app.processIdentifier, bundleID: app.bundleIdentifier)
         report(app, probe)
         if let anchor = probe.anchor {
-            panel.show(text: layoutLabel, anchor: anchor)
+            panel.show(text: layout.label, anchor: anchor)
         } else {
             panel.hide()
         }
